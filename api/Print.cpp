@@ -16,6 +16,7 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -378,4 +379,22 @@ size_t Print::printFloat(double number, int digits)
   }
 
   return n;
+}
+
+size_t Print::printf(const char *format, ...)
+{
+  va_list args;
+  va_list copy;
+  va_start(args, format);
+  int len = vsnprintf(NULL, 0, format, args);
+  if (len <= 0) {
+    va_end(args);
+    return 0;
+  }
+  char *buf = (char *)malloc(len + 1);
+  len = vsnprintf(buf, len + 1, format, args);
+  va_end(args);
+  len = write(buf, len);
+  free(buf);
+  return len;
 }

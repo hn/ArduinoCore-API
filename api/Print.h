@@ -90,6 +90,8 @@ class Print
     size_t println(void);
 
     virtual void flush() { /* Empty implementation for backward compatibility */ }
+
+    size_t printf(const char *format, ...) __attribute__((format (printf, 2, 3)));
 };
 
 }
