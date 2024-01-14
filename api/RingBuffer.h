@@ -37,7 +37,6 @@ class RingBufferN
 {
   public:
     uint8_t _aucBuffer[N] ;
-    volatile int _iHead ;
     volatile int _iTail ;
     volatile int _numElems;
 
@@ -74,17 +73,12 @@ void RingBufferN<N>::store_char( uint8_t c )
   // current location of the tail), we're about to overflow the buffer
   // and so we don't write the character or advance the head.
   if (!isFull())
-  {
-    _aucBuffer[_iHead] = c ;
-    _iHead = nextIndex(_iHead);
-    _numElems++;
-  }
+    _aucBuffer[(_iTail + _numElems++) % N] = c ;
 }
 
 template <int N>
 void RingBufferN<N>::clear()
 {
-  _iHead = 0;
   _iTail = 0;
   _numElems = 0;
 }
