@@ -96,8 +96,8 @@ int RingBufferN<N>::read_char()
     return -1;
 
   uint8_t value = _aucBuffer[_iTail];
-  _iTail = nextIndex(_iTail);
   _numElems--;
+  _iTail = isEmpty() ? _iHead : nextIndex(_iTail);
 
   return value;
 }
