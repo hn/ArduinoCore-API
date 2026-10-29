@@ -30,6 +30,11 @@ namespace arduino {
 // using a ring buffer (I think), in which head is the index of the location
 // to which to write the next incoming character and tail is the index of the
 // location from which to read.
+//
+// Lock-free for exactly one producer (e.g. the RX interrupt) and one
+// consumer (e.g. the main task): store_char() only writes _iHead,
+// read_char() and clear() only write _iTail. One slot is always kept
+// free to tell "full" from "empty", so the buffer holds up to N-1 bytes.
 #define SERIAL_BUFFER_SIZE 64
 
 template <int N>
@@ -39,7 +44,6 @@ class RingBufferN
     uint8_t _aucBuffer[N] ;
     volatile int _iHead ;
     volatile int _iTail ;
-    volatile int _numElems;
 
   public:
     RingBufferN( void ) ;
@@ -53,7 +57,8 @@ class RingBufferN
 
   private:
     int nextIndex(int index);
-    inline bool isEmpty() const { return (_numElems == 0); }
+    inline bool isEmpty() const { return (_iTail == _iHead); }
+    static inline void barrier() { __asm__ volatile("" ::: "memory"); }
 };
 
 typedef RingBufferN<SERIAL_BUFFER_SIZE> RingBuffer;
@@ -62,8 +67,8 @@ typedef RingBufferN<SERIAL_BUFFER_SIZE> RingBuffer;
 template <int N>
 RingBufferN<N>::RingBufferN( void )
 {
-    memset( _aucBuffer, 0, N ) ;
-    clear();
+    _iHead = 0;
+    _iTail = 0;
 }
 
 template <int N>
@@ -76,17 +81,16 @@ void RingBufferN<N>::store_char( uint8_t c )
   if (!isFull())
   {
     _aucBuffer[_iHead] = c ;
+    barrier(); // store the byte before publishing it via _iHead
     _iHead = nextIndex(_iHead);
-    _numElems++;
   }
 }
 
 template <int N>
 void RingBufferN<N>::clear()
 {
-  _iHead = 0;
-  _iTail = 0;
-  _numElems = 0;
+  // only touch our own index, the producer may be running
+  _iTail = _iHead;
 }
 
 template <int N>
@@ -95,9 +99,10 @@ int RingBufferN<N>::read_char()
   if (isEmpty())
     return -1;
 
+  barrier(); // read the byte only after checking _iHead
   uint8_t value = _aucBuffer[_iTail];
+  barrier(); // finish reading before releasing the slot via _iTail
   _iTail = nextIndex(_iTail);
-  _numElems--;
 
   return value;
 }
@@ -105,13 +110,13 @@ int RingBufferN<N>::read_char()
 template <int N>
 int RingBufferN<N>::available()
 {
-  return _numElems;
+  return (uint32_t)(_iHead - _iTail + N) % N;
 }
 
 template <int N>
 int RingBufferN<N>::availableForStore()
 {
-  return (N - _numElems);
+  return (N - 1 - available());
 }
 
 template <int N>
@@ -120,6 +125,7 @@ int RingBufferN<N>::peek()
   if (isEmpty())
     return -1;
 
+  barrier();
   return _aucBuffer[_iTail];
 }
 
@@ -132,7 +138,7 @@ int RingBufferN<N>::nextIndex(int index)
 template <int N>
 bool RingBufferN<N>::isFull()
 {
-  return (_numElems == N);
+  return (nextIndex(_iHead) == _iTail);
 }
 
 }
